@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>小特安的存钱罐</title>
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; 
+            background-color: #d1262d; 
+            margin: 0;
+            -webkit-tap-highlight-color: transparent;
+            user-select: none; /* 防止长按时弹出系统选中文案 */
+        }
+        .jar-wrapper { position: relative; width: 135px; height: 155px; margin: 0 auto; }
+        .jar-cork {
+            position: absolute; top: -20px; left: 50%; transform: translateX(-50%);
+            width: 80px; height: 26px; background-color: #E2AD75;
+            border: 3px solid #4A3219; border-radius: 4px 4px 2px 2px; z-index: 10;
+            box-shadow: inset 0 4px 0 rgba(255,255,255,0.2), inset 0 -4px 0 rgba(0,0,0,0.1);
+        }
+        .jar-cork::after { content: ''; position: absolute; bottom: 4px; left: 0; width: 100%; height: 2px; background-color: #BC8551; }
+        .jar-neck {
+            position: absolute; top: 2px; left: 50%; transform: translateX(-50%);
+            width: 90px; height: 14px; background-color: #ffecd9;
+            border: 3px solid #4A3219; border-radius: 8px; z-index: 9;
+        }
+        .jar-body {
+            position: absolute; top: 10px; left: 0; width: 100%; height: 100%;
+            background-color: #FCFAEF; border: 3px solid #4A3219;
+            border-radius: 32px 32px 42px 42px; overflow: hidden; z-index: 5;
+            box-shadow: inset -8px -8px 0 rgba(220, 200, 170, 0.2), inset 6px 0 0 rgba(255, 255, 255, 0.9);
+            transform: translateZ(0); 
+        }
+        .liquid {
+            position: absolute; bottom: 0; left: 0; width: 100%; background-color: #F8C331;
+            transition: height 1.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+        }
+        .wave { position: absolute; left: 0; width: 200%; transform-origin: bottom center; }
+        .wave-back {
+            bottom: 100%; height: 14px; 
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,10 Q25,14 50,10 T100,10 L100,20 L0,20 Z' fill='%23DF9B16'/%3E%3C/svg%3E") repeat-x;
+            background-size: 50% 100%; animation: moveWave 4s linear infinite; opacity: 0.9;
+        }
+        .wave-front {
+            bottom: calc(100% - 2px); height: 12px; 
+            background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 20' preserveAspectRatio='none'%3E%3Cpath d='M0,10 Q25,13 50,10 T100,10 L100,20 L0,20 Z' fill='%23F8C331'/%3E%3C/svg%3E") repeat-x;
+            background-size: 50% 100%; animation: moveWave 2.8s linear infinite; 
+        }
+        @keyframes moveWave { 0% { transform: translate3d(0, 0, 0); } 100% { transform: translate3d(-50%, 0, 0); } }
+        ::-webkit-scrollbar { display: none; }
+        .modal-enter-active, .modal-leave-active { transition: all 0.25s ease-out; }
+        .modal-enter-from, .modal-leave-to { transform: translateY(100%); opacity: 0; }
+    </style>
+</head>
+<body class="h-screen overflow-hidden flex flex-col">
+    <div id="app" class="max-w-md mx-auto h-full flex flex-col w-full relative">
+        
+        <div v-if="showToast" class="fixed top-20 left-1/2 -translate-x-1/2 bg-white text-gray-800 px-5 py-3 rounded-full shadow-2xl z-[100] flex items-center gap-3 border-2 border-red-800 text-sm font-bold">
+            <span>{{ toastEmoji }}</span><span>{{ toastMsg }}</span>
+        </div>
+
+        <header class="pt-4 pb-3 px-4 flex justify-between items-center z-30 shrink-0 text-white">
+            <div class="flex-1 truncate pr-2">
+                <h1 class="text-xl font-extrabold truncate">小特安的存钱罐</h1>
+                <p class="text-xs opacity-90 truncate">迎财神！进度+++</p>
+            </div>
+            <div class="flex items-center gap-2 relative">
+                <button @click="isDropdownOpen = !isDropdownOpen" class="bg-white text-gray-800 text-sm font-bold rounded-lg py-1.5 px-3 shadow-sm flex items-center gap-1">
+                    <span>{{ currentBank?.name }}</span>
+                    <svg class="w-4 h-4 transition-transform" :class="{'rotate-180': isDropdownOpen}" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                </button>
+                <div v-if="isDropdownOpen" class="absolute right-0 top-11 w-44 bg-white rounded-lg shadow-2xl z-50 border py-1 overflow-hidden">
+                    <div v-for="(bank, idx) in banks" :key="bank.id" @click="selectBank(bank.id)" class="px-3 py-2.5 text-sm font-bold text-gray-700 flex justify-between items-center hover:bg-red-50 border-b last:border-0">
+                        <span class="truncate flex-1">{{ bank.name }}</span>
+                        <div class="flex gap-2 ml-2">
+                            <button v-if="idx > 0" @click.stop="moveBank(idx, -1)" class="text-gray-300 active:text-gray-600 px-1">↑</button>
+                            <button v-if="idx < banks.length-1" @click.stop="moveBank(idx, 1)" class="text-gray-300 active:text-gray-600 px-1">↓</button>
+                        </div>
+                    </div>
+                </div>
+                <button @click="showNewBankModal = true" class="bg-white text-[#C8161D] w-8 h-8 rounded-lg font-bold shadow-sm">＋</button>
+            </div>
+        </header>
+
+        <main class="flex-1 bg-[#FDF8F2] rounded-t-3xl shadow-2xl flex flex-col p-5 overflow-hidden">
+            <div class="flex justify-between items-center gap-4 mb-6 mt-6 shrink-0">
+                <div class="w-5/12 flex flex-col items-center">
+                    <div class="jar-wrapper">
+                        <div class="jar-cork"></div><div class="jar-neck"></div>
+                        <div class="jar-body">
+                            <div class="liquid" :style="{ height: progress + '%' }">
+                                <div class="wave wave-back"></div><div class="wave wave-front"></div>
+                            </div>
+                            <div class="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
+                                <span class="text-2xl font-black text-white" style="text-shadow: 0 2px 6px rgba(0,0,0,0.35);">{{ progress }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-400 mt-3 font-bold truncate w-full text-center">目标: ¥{{ currentBank?.target?.toLocaleString() }}</p>
+                </div>
+                <div class="w-7/12 flex flex-col text-center">
+                    <div class="bg-white/70 p-4 rounded-2xl border border-white mb-3 shadow-sm">
+                        <p class="text-xs text-gray-400 mb-1">当前总资产</p>
+                        <p class="text-3xl font-black text-gray-800 tracking-tighter">¥{{ totalAssets.toLocaleString() }}</p>
+                    </div>
+                    <button @click="openAssetModal()" class="bg-[#d1262d] text-white py-3.5 rounded-xl font-bold text-sm shadow-md active:scale-95 transition-transform">＋ 记录新变动</button>
+                </div>
+            </div>
+
+            <div class="flex-1 flex flex-col min-h-0">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-bold text-gray-800">资产列表</h3>
+                    <button @click="showHistoryModal = true" class="text-xs font-bold text-gray-500 bg-white/60 px-3 py-1.5 rounded-lg border shadow-sm active:bg-gray-100">🕒 操作历史</button>
+                </div>
+                <div class="flex-1 overflow-y-auto space-y-3 pb-6">
+                    <div v-for="(asset, i) in currentBank?.assets" :key="asset.id" 
+                         @click="openAssetModal(asset)"
+                         @contextmenu.prevent="handleLongPress(asset)"
+                         @touchstart="startTouch(asset)"
+                         @touchend="endTouch"
+                         :class="dopamineColors[i % dopamineColors.length]" 
+                         class="p-4 rounded-2xl shadow-sm border border-black/5 active:scale-[0.98] transition-transform">
+                        <div class="flex justify-between items-center">
+                            <span class="font-bold text-gray-800 text-base">{{ asset.name }}</span>
+                            <span class="font-black text-xl text-gray-900 font-mono">¥{{ asset.amount.toLocaleString() }}</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mt-1">{{ asset.note || '暂无备注' }}</p>
+                    </div>
+                    <div v-if="currentBank?.assets.length === 0" class="text-center py-10 text-gray-300 text-sm italic">点击上方按钮添加第一笔资产</div>
+                </div>
+            </div>
+        </main>
+
+        <transition name="modal">
+            <div v-if="showAssetModal" class="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end" @click.self="showAssetModal = false">
+                <div class="bg-[#ffecd9] rounded-t-3xl p-5 w-full shadow-2xl border-t-2 border-gray-800">
+                    <div class="flex justify-between items-center mb-4 text-gray-800">
+                        <h2 class="font-bold text-lg">{{ editingAsset.id ? '修改资产' : '新增资产' }}</h2>
+                        <button @click="showAssetModal = false" class="text-3xl font-bold px-2 text-gray-400">×</button>
+                    </div>
+                    <input v-model="editingAsset.name" placeholder="资产名称" class="w-full mb-3 p-3.5 rounded-xl outline-none text-base border-2 border-gray-200 focus:border-red-500">
+                    <div class="relative mb-3">
+                        <span class="absolute left-4 top-4 font-bold text-xl text-gray-500">¥</span>
+                        <div class="w-full p-4 pl-10 bg-white border-2 border-gray-200 rounded-xl text-right font-black text-2xl text-gray-800">{{ calcDisplay }}</div>
+                    </div>
+                    <input v-model="editingAsset.note" placeholder="备注（选填）" class="w-full mb-5 p-3.5 rounded-xl outline-none text-sm border-2 border-gray-200 focus:border-red-500">
+
+                    <div class="grid grid-cols-4 gap-2 mb-5">
+                        <button v-for="num in ['7','8','9','/','4','5','6','*','1','2','3','-','C','0','.','+']" :key="num" @click="calcPush(num)" 
+                                :class="['p-4 rounded-xl font-bold text-xl border-b-4 active:translate-y-0.5 active:border-b-0 transition-all', ['/','*','-','+'].includes(num) ? 'bg-gray-100 border-gray-300 text-gray-600' : num === 'C' ? 'bg-red-50 border-red-200 text-red-600' : 'bg-white border-gray-200 text-gray-800']">
+                            {{ num === '*' ? '×' : num === '/' ? '÷' : num }}
+                        </button>
+                    </div>
+
+                    <div class="flex gap-2 pb-2">
+                        <button @click="calcPush('DEL')" class="py-4 px-8 bg-gray-200 text-gray-600 rounded-xl font-bold flex items-center justify-center active:bg-gray-300">
+                            <svg class="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M12 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2M3 12l6-7h12a2 2 0 012 2v10a2 2 0 01-2 2H9l-6-7z" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+                        </button>
+                        <button @click="saveAsset" class="flex-1 py-4 bg-[#d1262d] text-white rounded-xl font-bold text-lg shadow-lg active:brightness-90 transition-all">保存记录</button>
+                    </div>
+                </div>
+            </div>
+        </transition>
+
+        <div v-if="showNewBankModal" class="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-6" @click.self="showNewBankModal = false">
+            <div class="bg-white rounded-2xl p-6 w-full max-w-xs shadow-2xl border-t-4 border-red-600">
+                <h2 class="font-bold text-lg mb-4 text-gray-800">设立新存钱罐</h2>
+                <input v-model="newBank.name" placeholder="名称" class="w-full mb-3 p-3 border-2 rounded-xl outline-none focus:border-red-500">
+                <input v-model.number="newBank.target" type="number" placeholder="目标金额" class="w-full mb-5 p-3 border-2 rounded-xl outline-none focus:border-red-500">
+                <div class="flex gap-3">
+                    <button @click="showNewBankModal = false" class="flex-1 py-3 bg-gray-100 rounded-xl font-bold text-gray-500">取消</button>
+                    <button @click="addBank" class="flex-1 py-3 bg-red-600 text-white rounded-xl font-bold shadow-md">设立</button>
+                </div>
+            </div>
+        </div>
+
+        <transition name="modal">
+            <div v-if="showHistoryModal" class="fixed inset-0 bg-black/60 z-50 flex flex-col justify-end" @click.self="showHistoryModal = false">
+                <div class="bg-[#FDF8F2] rounded-t-3xl p-5 w-full h-[80%] flex flex-col shadow-2xl border-t-2 border-gray-800">
+                    <div class="flex justify-between items-center mb-5"><h2 class="text-xl font-bold text-gray-800 flex items-center gap-2">🕒 操作历史</h2><button @click="showHistoryModal = false" class="text-3xl font-bold text-gray-300">×</button></div>
+                    <div class="flex-1 overflow-y-auto space-y-4 pr-1">
+                        <div v-for="log in sortedHistory" :key="log.time" class="bg-white p-4 rounded-2xl border shadow-sm">
+                            <div class="flex justify-between border-b border-dashed pb-2 mb-2 text-xs text-gray-400">
+                                <span class="font-bold text-gray-600">{{ log.assetName }} · {{ log.action }}</span><span>{{ formatTime(log.time) }}</span>
+                            </div>
+                            <div class="flex items-center gap-3">
+                                <span class="line-through text-gray-300 text-sm">¥{{ log.before.toLocaleString() }}</span>
+                                <span class="text-gray-300">➡</span>
+                                <span class="font-black text-red-600 text-lg">¥{{ log.after.toLocaleString() }}</span>
+                                <span v-if="(log.after - log.before) !== 0" :class="(log.after - log.before) > 0 ? 'text-green-600 bg-green-50 border-green-100' : 'text-gray-400 bg-gray-50 border-gray-100'" class="ml-auto px-2 py-0.5 rounded-lg border text-[10px] font-bold">
+                                    {{ (log.after - log.before) > 0 ? '+' : '' }}{{ (log.after - log.before).toLocaleString() }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </transition>
+    </div>
+
+    <script>
+        const { createApp, ref, computed, reactive, watch, onMounted } = Vue;
+        createApp({
+            setup() {
+                const banks = ref([]);
+                const currentBankId = ref(null);
+                const isDropdownOpen = ref(false);
+                const showAssetModal = ref(false);
+                const showNewBankModal = ref(false);
+                const showHistoryModal = ref(false);
+                const showToast = ref(false);
+                const toastMsg = ref('');
+                const toastEmoji = ref('');
+                const calcDisplay = ref('0');
+                const isCalculated = ref(false);
+                let touchTimer = null;
+
+                const dopamineColors = ['bg-[#fff2cc]', 'bg-[#e6f3e1]', 'bg-[#e0eaf3]', 'bg-[#e8e2f6]', 'bg-[#f9e2e2]', 'bg-[#f9cb9c]', 'bg-[#d9d2e9]'];
+                const editingAsset = reactive({ id: null, name: '', amount: 0, note: '' });
+                const newBank = reactive({ name: '', target: '' });
+
+                onMounted(() => {
+                    const saved = localStorage.getItem('piggy_banks_v15_pro');
+                    if (saved) {
+                        banks.value = JSON.parse(saved);
+                        if (banks.value.length > 0) currentBankId.value = banks.value[0].id;
+                    } else {
+                        const id = Date.now();
+                        banks.value = [{ id, name: '环游欧洲基金', target: 50000, assets: [], history: [] }];
+                        currentBankId.value = id;
+                    }
+                });
+                watch(banks, (v) => localStorage.setItem('piggy_banks_v15_pro', JSON.stringify(v)), { deep: true });
+
+                const currentBank = computed(() => banks.value.find(b => b.id === currentBankId.value));
+                const totalAssets = computed(() => currentBank.value?.assets.reduce((s, a) => s + Number(a.amount), 0) || 0);
+                const progress = computed(() => {
+                    if (!currentBank.value || currentBank.value.target <= 0) return 0;
+                    let p = (totalAssets.value / currentBank.value.target) * 100;
+                    return p > 100 ? 100 : parseFloat(p.toFixed(1));
+                });
+                const sortedHistory = computed(() => currentBank.value ? [...currentBank.value.history].sort((a,b)=>b.time-a.time) : []);
+
+                const calcPush = (val) => {
+                    if (val === 'C') { calcDisplay.value = '0'; isCalculated.value = false; }
+                    else if (val === 'DEL') { calcDisplay.value = calcDisplay.value.length > 1 ? calcDisplay.value.slice(0, -1) : '0'; }
+                    else if (val === '.') { 
+                        const parts = calcDisplay.value.split(/[\+\-\*\/]/);
+                        if (!parts[parts.length-1].includes('.')) calcDisplay.value += '.';
+                    } else if (isNaN(val)) {
+                        const last = calcDisplay.value.slice(-1);
+                        if (!isNaN(last) && last !== '.') calcDisplay.value += val;
+                    } else {
+                        if (calcDisplay.value === '0' || isCalculated.value) calcDisplay.value = val;
+                        else calcDisplay.value += val;
+                        isCalculated.value = false;
+                    }
+                };
+
+                const openAssetModal = (a = null) => {
+                    if (a) { Object.assign(editingAsset, a); calcDisplay.value = String(a.amount); }
+                    else { Object.assign(editingAsset, { id: null, name: '', amount: 0, note: '' }); calcDisplay.value = '0'; }
+                    isCalculated.value = false;
+                    showAssetModal.value = true;
+                };
+
+                const saveAsset = () => {
+                    if (!editingAsset.name) return alert('请输入资产名称');
+                    
+                    let finalVal = 0;
+                    try {
+                        let cleanExpr = calcDisplay.value.replace(/[\+\-\*\/]+$/, "");
+                        finalVal = Number(eval(cleanExpr).toFixed(2));
+                    } catch(e) {
+                        alert("计算公式有误"); return;
+                    }
+
+                    const b = currentBank.value;
+                    if (editingAsset.id) {
+                        const t = b.assets.find(as => as.id === editingAsset.id);
+                        if (finalVal !== t.amount || editingAsset.name !== t.name) {
+                            b.history.push({ time: Date.now(), assetName: t.name, action: '修改', before: t.amount, after: finalVal });
+                            Object.assign(t, { name: editingAsset.name, amount: finalVal, note: editingAsset.note });
+                        }
+                    } else {
+                        b.assets.push({ id: Date.now(), name: editingAsset.name, amount: finalVal, note: editingAsset.note });
+                        b.history.push({ time: Date.now(), assetName: editingAsset.name, action: '新增', before: 0, after: finalVal });
+                    }
+                    showAssetModal.value = false;
+                };
+
+                const deleteAsset = (asset) => {
+                    if (confirm(`确定要删除资产 [${asset.name}] 吗？`)) {
+                        const idx = currentBank.value.assets.findIndex(a => a.id === asset.id);
+                        currentBank.value.history.push({ time: Date.now(), assetName: asset.name, action: '删除', before: asset.amount, after: 0 });
+                        currentBank.value.assets.splice(idx, 1);
+                        showAssetModal.value = false;
+                    }
+                };
+
+                // 长按逻辑
+                const handleLongPress = (asset) => deleteAsset(asset);
+                const startTouch = (asset) => { touchTimer = setTimeout(() => handleLongPress(asset), 800); };
+                const endTouch = () => { clearTimeout(touchTimer); };
+
+                const addBank = () => {
+                    if (!newBank.name) return;
+                    banks.value.unshift({ id: Date.now(), name: newBank.name, target: newBank.target || 0, assets: [], history: [] });
+                    currentBankId.value = banks.value[0].id;
+                    showNewBankModal.value = false;
+                    newBank.name = ''; newBank.target = '';
+                };
+
+                const selectBank = (id) => { currentBankId.value = id; isDropdownOpen.value = false; };
+                const moveBank = (idx, dir) => {
+                    const target = idx + dir;
+                    const temp = banks.value[idx];
+                    banks.value[idx] = banks.value[target];
+                    banks.value[target] = temp;
+                };
+
+                const formatTime = (ts) => { const d = new Date(ts); return `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${d.getMinutes().toString().padStart(2,'0')}`; };
+
+                return { banks, currentBankId, currentBank, totalAssets, progress, sortedHistory, dopamineColors, showNewBankModal, showAssetModal, showHistoryModal, newBank, addBank, openAssetModal, editingAsset, calcDisplay, calcPush, saveAsset, deleteAsset, formatTime, showToast, toastMsg, toastEmoji, isDropdownOpen, selectBank, moveBank, handleLongPress, startTouch, endTouch }
+            }
+        }).mount('#app')
+    </script>
+</body>
+</html>
